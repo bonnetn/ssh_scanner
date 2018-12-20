@@ -25,8 +25,8 @@ def get_certificate(addr):
         crt = proc.stdout.read()
 
     if not crt:
-        return addr, None
         logger.debug("No certificate found for {}".format(addr))
+        return None, addr
 
     crt = crt.split()
     crt = crt[-1]
