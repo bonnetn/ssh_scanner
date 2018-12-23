@@ -3,6 +3,7 @@
 import argparse
 import logging
 import subprocess
+import sys
 from concurrent.futures.thread import ThreadPoolExecutor
 from ipaddress import ip_network
 
@@ -43,20 +44,49 @@ def get_all_certs(executor, ip_range, timeout):
     return dict(addr_cert)
 
 
+def validate_args(logger, args):
+    timeout = args.timeout
+    if timeout <= 0:
+        logger.error("Timeout must be > 0.")
+        sys.exit(1)
+
+    parallel = args.parallel
+    if parallel <= 0:
+        logger.error("Parallel must be > 0.")
+        sys.exit(1)
+
+    try:
+        network1 = ip_network(args.network1)
+    except ValueError:
+        logger.error("Network1 is invalid ({}).".format(args.network1))
+        sys.exit(1)
+
+    try:
+        network2 = ip_network(args.network2)
+    except ValueError:
+        logger.error("Network2 is invalid ({}).".format(args.network2))
+        sys.exit(1)
+
+    return timeout, parallel, network1, network2
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Scan for a host that has SSH enabled in two networks.')
     parser.add_argument('network1', type=str, action='store', help='network1')
     parser.add_argument('network2', type=str, action='store', help='network2')
+    parser.add_argument('--parallel', type=int, action='store', default=64,
+                        help='number of scanning processes being run in parallel (default 64)')
+
     parser.add_argument('--timeout', type=int, action='store', default=5,
                         help='timeout expressed in seconds for each certificate request')
     args = parser.parse_args()
 
-    timeout = args.timeout
     logger = get_logger()
+    timeout, parallel, network1, network2 = validate_args(logger, args)
 
-    with ThreadPoolExecutor(max_workers=64) as executor:
-        lan1_addr_cert = get_all_certs(executor, ip_network(args.network1), timeout)
-        lan2_addr_cert = get_all_certs(executor, ip_network(args.network2), timeout)
+    with ThreadPoolExecutor(max_workers=args.parallel) as executor:
+        lan1_addr_cert = get_all_certs(executor, network1, timeout)
+        lan2_addr_cert = get_all_certs(executor, network2, timeout)
 
     certs_in_both_networks = set(lan1_addr_cert.keys()) & set(lan2_addr_cert.keys())
     for cert in certs_in_both_networks:
